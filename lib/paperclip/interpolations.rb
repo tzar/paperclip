@@ -9,7 +9,9 @@ module Paperclip
     # Hash assignment of interpolations. Included only for compatibility,
     # and is not intended for normal use.
     def self.[]= name, block
-      define_method(name, &block)
+      define_method(name, &block).tap do
+        @__all_interpolators = nil
+      end
     end
 
     # Hash access of interpolations. Included only for compatibility,
@@ -23,15 +25,22 @@ module Paperclip
       self.instance_methods(false).sort
     end
 
+    def self.all_interpolators
+      @__all_interpolators ||= begin
+                                 _all = all.reverse
+                                 Hash[_all.zip(_all.map {|x| /#{x.inspect}/})]
+                               end
+    end
+
     # Perform the actual interpolation. Takes the pattern to interpolate
     # and the arguments to pass, which are the attachment and style name.
     # You can pass a method name on your record as a symbol, which should turn
     # an interpolation pattern for Paperclip to use.
     def self.interpolate pattern, *args
       pattern = args.first.instance.send(pattern) if pattern.kind_of? Symbol
-      all.reverse.inject(pattern) do |result, tag|
-        result.gsub(/:#{tag}/) do |match|
-          send( tag, *args )
+      pattern.dup.tap do |result|
+        all_interpolators.each do |method, regex|
+          result.gsub!(regex) { send(method, *args) }
         end
       end
     end
